@@ -5,8 +5,8 @@ KildareBD {
 	var <voiceGroup;
 
 	*new { | out |
-        ^super.new.init(out)
-    }
+		^super.new.init(out)
+	}
 
 	init { | out |
 
