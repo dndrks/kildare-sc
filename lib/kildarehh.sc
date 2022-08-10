@@ -1,0 +1,168 @@
+KildareHH {
+
+	var <params;
+	var <controlspecs;
+	var <voiceGroup;
+
+	*new { | out |
+		^super.new.init(out)
+	}
+
+	init { | out |
+
+		var s = Server.default;
+
+		SynthDef(\kildare_hh, {
+			arg out, stopGate = 1,
+			amp, carHz, carDetune, carAtk, carRel,
+			tremDepth, tremHz,
+			modAmp, modHz, modAtk, modRel,
+			modFollow, modNum, modDenum,
+			feedAmp,
+			amDepth, amHz,
+			eqHz, eqAmp,
+			bitRate, bitCount,
+			lpHz, hpHz, filterQ,
+			lpAtk, lpRel, lpDepth,
+			pan,
+			squishPitch, squishChunk;
+
+			var car, mod, carEnv, modEnv, carRamp, tremolo, tremod,
+			ampMod, filterEnv, mainSend;
+
+			amp = amp*0.85;
+			eqHz = eqHz.lag3(0.1);
+			lpHz = lpHz.lag3(0.1);
+			hpHz = hpHz.lag3(0.1);
+
+			filterQ = LinLin.kr(filterQ,0,100,2.0,0.001);
+			modAmp = LinLin.kr(modAmp,0.0,1.0,0,127);
+			feedAmp = LinLin.kr(feedAmp,0.0,1.0,0.0,10.0);
+			eqAmp = LinLin.kr(eqAmp,-2.0,2.0,-10.0,10.0);
+			tremDepth = LinLin.kr(tremDepth,0.0,100,0.0,1.0);
+			amDepth = LinLin.kr(amDepth,0,1.0,0.0,2.0);
+			carHz = carHz * (2.pow(carDetune/12));
+			modHz = Select.kr(modFollow > 0, [modHz, carHz * (modNum / modDenum)]);
+
+			modEnv = EnvGen.kr(Env.perc(modAtk, modRel));
+			carRamp = EnvGen.kr(Env([1000, 0.000001], [tremHz], curve: \exp));
+			carEnv = EnvGen.kr(Env.perc(carAtk, carRel), gate: stopGate, doneAction:2);
+			filterEnv = EnvGen.kr(Env.perc(lpAtk, lpRel, 1),gate: stopGate);
+			ampMod = SinOsc.ar(freq:amHz,mul:amDepth,add:1);
+			mod = SinOsc.ar(modHz, mul:modAmp) * modEnv;
+			car = SinOscFB.ar(carHz + mod, feedAmp) * carEnv * amp;
+			car = HPF.ar(car,1100,1);
+			car = car*ampMod;
+			tremolo = SinOsc.ar(tremHz, 0, tremDepth);
+			tremod = (1.0 - tremDepth) + tremolo;
+			car = car*tremod;
+			car = Squiz.ar(in:car, pitchratio:squishPitch, zcperchunk:squishChunk, mul:1);
+			car = Decimator.ar(car,bitRate,bitCount,1.0);
+			car = BPeakEQ.ar(in:car,freq:eqHz,rq:1,db:eqAmp,mul:1);
+			car = RLPF.ar(in:car,freq:Clip.kr(lpHz + ((5*(lpHz * filterEnv)) * lpDepth), 20, 20000), rq: filterQ, mul:1);
+			car = RHPF.ar(in:car,freq:hpHz, rq: filterQ, mul:1);
+
+			car = Compander.ar(in:car,control:car, thresh:0.3, slopeBelow:1, slopeAbove:0.1, clampTime:0.01, relaxTime:0.01);
+			mainSend = Pan2.ar(car,pan);
+			mainSend = mainSend * amp;
+
+			Out.ar(out, mainSend);
+
+		}).send;
+
+		// build a list of our sound-shaping parameters, with default values
+		// (see https://doc.sccode.org/Classes/Dictionary.html for more about Dictionaries):
+		params = Dictionary.newFrom([
+			\out,out,
+			\poly,0,
+			\amp,0.7,
+			\carAtk,0,
+			\carRel,0.03,
+			\modAmp,1,
+			\modHz,100,
+			\modFollow,0,
+			\modNum,1,
+			\modDenum,1,
+			\modAtk,0,
+			\modRel,2,
+			\feedAmp,1,
+			\tremDepth,0,
+			\tremHz,1000,
+			\squishPitch,1,
+			\squishChunk,1,
+			\amDepth,0,
+			\amHz,8175.08,
+			\eqHz,6000,
+			\eqAmp,0,
+			\bitRate,24000,
+			\bitCount,24,
+			\lpHz,19000,
+			\hpHz,20,
+			\filterQ,50,
+			\lpAtk,0,
+			\lpRel,0.3,
+			\lpDepth,0,
+			\pan,0,
+		]);
+
+		controlspecs = Dictionary.newFrom([
+			\00, Dictionary.newFrom([\poly, ControlSpec.new(minval: 0.0, maxval: 1.0, warp: 'lin', step: 1, default: 0)]),
+			\01, Dictionary.newFrom([\amp, ControlSpec.new(minval: 0.0, maxval: 1.0, warp: 'lin', step: 0.0, default: 0.6)]),
+			\02, Dictionary.newFrom([\carAtk, ControlSpec.new(minval: 0.001, maxval: 10, warp: 'exp', units: 's', default: 0)]),
+			\03, Dictionary.newFrom([\carRel, ControlSpec.new(minval: 0.001, maxval: 10, warp: 'exp', units: 's', default: 0.03)]),
+			\04, Dictionary.newFrom([\modAmp, ControlSpec.new(minval: 0, maxval: 1, warp: 'lin', default: 1)]),
+			\05, Dictionary.newFrom([\modHz, ControlSpec.new(minval: 20, maxval: 24000, warp: 'exp', units: 'hz', default: 100)]),
+			\06, Dictionary.newFrom([\modFollow, ControlSpec.new(minval: 0, maxval: 1, warp: 'lin', step: 1, default: 0)]),
+			\07, Dictionary.newFrom([\modNum, ControlSpec.new(minval: -20, maxval: 20, warp: 'lin', default: 1)]),
+			\08, Dictionary.newFrom([\modDenum, ControlSpec.new(minval: -20, maxval: 20, warp: 'lin', default: 1)]),
+			\09, Dictionary.newFrom([\modAtk, ControlSpec.new(minval: 0.001, maxval: 10, warp: 'exp', units: 's', default: 0.001)]),
+			\10, Dictionary.newFrom([\modRel, ControlSpec.new(minval: 0.001, maxval: 10, warp: 'exp', units: 's', default: 2)]),
+			\11, Dictionary.newFrom([\feedAmp, ControlSpec.new(minval: 0, maxval: 1, warp: 'lin', default: 1)]),
+			\12, Dictionary.newFrom([\tremDepth, ControlSpec.new(minval: 0, maxval: 1, warp: 'lin', default: 0)]),
+			\13, Dictionary.newFrom([\tremHz, ControlSpec.new(minval: 20, maxval: 24000, warp: 'exp', units: 'hz', default: 1000)]),
+			\14, Dictionary.newFrom([\squishPitch, ControlSpec.new(minval: 1, maxval: 10, warp: 'lin', default: 1)]),
+			\15, Dictionary.newFrom([\squishChunk, ControlSpec.new(minval: 1, maxval: 10, warp: 'lin', default: 1)]),
+			\16, Dictionary.newFrom([\amDepth, ControlSpec.new(minval: 0, maxval: 1, warp: 'lin', default: 0)]),
+			\17, Dictionary.newFrom([\amHz, ControlSpec.new(minval: 0.001, maxval: 12000, warp: 'exp', units: 'hz', default: 2698.8)]),
+			\18, Dictionary.newFrom([\eqHz, ControlSpec.new(minval: 20, maxval: 20000, warp: 'exp', units: 'hz', default: 6000)]),
+			\19, Dictionary.newFrom([\eqAmp, ControlSpec.new(minval: -2, maxval: 2, warp: 'lin', default: 0)]),
+			\20, Dictionary.newFrom([\bitRate, ControlSpec.new(minval: 20, maxval: 24000, warp: 'exp', units: 'hz', default: 24000)]),
+			\21, Dictionary.newFrom([\bitCount, ControlSpec.new(minval: 1, maxval: 24, warp: 'lin', units: 'bits', default: 24)]),
+			\22, Dictionary.newFrom([\lpHz, ControlSpec.new(minval: 20, maxval: 20000, warp: 'exp', units: 'hz', default: 20000)]),
+			\23, Dictionary.newFrom([\lpAtk, ControlSpec.new(minval: 0.001, maxval: 10, warp: 'exp', units: 's', default: 0.001)]),
+			\24, Dictionary.newFrom([\lpRel, ControlSpec.new(minval: 0.001, maxval: 10, warp: 'exp', units: 's', default: 0.5)]),
+			\25, Dictionary.newFrom([\lpDepth, ControlSpec.new(minval: 0, maxval: 1, warp: 'lin', default: 0)]),
+			\26, Dictionary.newFrom([\hpHz, ControlSpec.new(minval: 20, maxval: 24000, warp: 'exp', units: 'hz', default: 20)]),
+			\27, Dictionary.newFrom([\filterQ, ControlSpec.new(minval: 0, maxval: 100, warp: 'lin', units: '%', default: 50)]),
+			\28, Dictionary.newFrom([\pan, ControlSpec.new(minval: -1, maxval: 1, warp: 'lin', default: 0)]),
+		]);
+
+	// NEW: register 'voiceGroup' as a Group on the Server
+		voiceGroup = Group.new(s);
+	}
+
+
+	trigger {
+		if( params[\poly] == 0,{
+			voiceGroup.set(\stopGate, -1.1);
+			Synth.new(\kildare_hh, params.getPairs, voiceGroup);
+		},{
+		// NEW: set the target of every Synth voice to the 'voiceGroup' Group
+		Synth.new(\kildare_hh, params.getPairs, voiceGroup);
+		});
+	}
+
+	setParam { arg paramKey, paramValue;
+		// NEW: send changes to the paramKey, paramValue pair immediately to all voices
+		if( params[\poly] == 0,{
+			voiceGroup.set(paramKey, paramValue);
+		});
+		params[paramKey] = paramValue;
+	}
+
+	// NEW: free our Group when the class is freed
+	free {
+		voiceGroup.free;
+	}
+
+}
