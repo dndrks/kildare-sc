@@ -601,9 +601,6 @@ Kildare {
             \in, busses[\mainOut], \out, 0
         ]);
 
-		(indexTracker).postln;
-		('hiiii').postln;
-
 	}
 
 	test_trigger { arg voiceKey, velocity, allocVoice;
@@ -836,16 +833,9 @@ Kildare {
 	loadFile { arg msg;
 		var voice = msg[1], filename = msg[2];
 
-		('here?').postln;
-		(voice == 1).postln;
-		filename.postln;
-		indexTracker[\1].postln;
-		(indexTracker[1]).postln;
-
 		voiceTracker[voice][indexTracker[voice]].set(\t_trig, -1);
 		voiceTracker[voice][indexTracker[voice]].set(\t_gate, -1);
 
-		('or here?').postln;
 		this.clearSamples(voice);
 		sampleInfo[voice][\samples][0] = Buffer.read(Server.default, filename ,action:{
 			arg bufnum;
@@ -877,7 +867,6 @@ Kildare {
 				polyParams[voice][indexTracker[voice]][\channels] = sampleInfo[voice][\samples][samplenum].numChannels;
 			});
 			('channel count: '++paramProtos[voice][\channels]).postln;
-			// ('group: ' ++ groups[voice]).postln;
 		});
 	}
 
