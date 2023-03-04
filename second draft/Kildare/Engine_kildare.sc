@@ -6,7 +6,7 @@ Engine_Kildare : CroneEngine {
 	}
 
 	alloc {
-		kernel = Kildare.new(Server.default);
+		kernel = Kildare.new(Crone.server);
 
 		this.addCommand(\trig, "sfsi", { arg msg;
 			var k = msg[1].asInteger.asSymbol;
@@ -135,12 +135,6 @@ Engine_Kildare : CroneEngine {
 
 		this.addCommand(\init_feedback,"", {
 			kernel.initFeedback();
-		});
-
-		this.addCommand(\reset,"", {
-			kernel.resetVoices();
-			kernel.resetParams();
-			kernel.resetBuffers();
 		});
 
 		//("/home/we/dust/data/kildare/test.txt")

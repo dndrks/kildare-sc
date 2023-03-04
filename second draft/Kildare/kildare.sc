@@ -32,33 +32,34 @@ Kildare {
 			var s = Server.default;
 
 			s.waitForBoot {
+				synthDefs = Dictionary.new;
+
+				synthDefs[\bd] = KildareBD.new(Crone.server);
+				synthDefs[\sd] = KildareSD.new(Crone.server);
+				synthDefs[\tm] = KildareTM.new(Crone.server);
+				synthDefs[\cp] = KildareCP.new(Crone.server);
+				synthDefs[\rs] = KildareRS.new(Crone.server);
+				synthDefs[\cb] = KildareCB.new(Crone.server);
+				synthDefs[\hh] = KildareHH.new(Crone.server);
+				synthDefs[\saw] = KildareSaw.new(Crone.server);
+				synthDefs[\fld] = KildareFLD.new(Crone.server);
+				synthDefs[\timbre] = KildareTimbre.new(Crone.server);
+				synthDefs[\ptr] = KildarePTR.new(Crone.server);
+				synthDefs[\input] = KildareInput.new(Crone.server);
+				synthDefs[\sample] = KildareSample.new(Crone.server);
 
 			} // Server.waitForBoot
 		} // StartUp
 	} // *initClass
 
 	*new {
-		synthDefs = Dictionary.new;
-
-		synthDefs[\bd] = KildareBD.new(Server.default);
-		synthDefs[\sd] = KildareSD.new(Server.default);
-		synthDefs[\tm] = KildareTM.new(Server.default);
-		synthDefs[\cp] = KildareCP.new(Server.default);
-		synthDefs[\rs] = KildareRS.new(Server.default);
-		synthDefs[\cb] = KildareCB.new(Server.default);
-		synthDefs[\hh] = KildareHH.new(Server.default);
-		synthDefs[\saw] = KildareSaw.new(Server.default);
-		synthDefs[\fld] = KildareFLD.new(Server.default);
-		synthDefs[\timbre] = KildareTimbre.new(Server.default);
-		synthDefs[\ptr] = KildarePTR.new(Server.default);
-		synthDefs[\input] = KildareInput.new(Server.default);
-		synthDefs[\sample] = KildareSample.new(Server.default);
-
 		^super.new.init;
 	}
 
 	init {
 		var s = Server.default, sample_iterator = 1;
+
+		'initializing kildare!'.postln;
 
 		synthKeys = Dictionary.newFrom([
 			\1, \none,
@@ -613,7 +614,7 @@ Kildare {
 				('triggering sample '++allocVoice).postln;
 			});
 			voiceTracker[voiceKey][allocVoice].set(\t_gate, 1);
-			// (' ' ++ indexTracker[voiceKey] ++ ' ' ++ allocVoice).postln;
+			(' ' ++ indexTracker[voiceKey] ++ ' ' ++ allocVoice).postln;
 		});
 	}
 
@@ -819,7 +820,6 @@ Kildare {
 	}
 
 	clearSamples { arg voice;
-		("clearSamples: " ++ voice).postln;
 		if ( sampleInfo[voice][\samples].size > 0, {
 			for ( 0, sampleInfo[voice][\samples].size-1, {
 				arg i;
@@ -833,9 +833,6 @@ Kildare {
 	loadFile { arg msg;
 		var voice = msg[1], filename = msg[2];
 
-		voice.postln;
-		indexTracker.postln;
-		indexTracker[voice].postln;
 		voiceTracker[voice][indexTracker[voice]].set(\t_trig, -1);
 		voiceTracker[voice][indexTracker[voice]].set(\t_gate, -1);
 
@@ -870,7 +867,6 @@ Kildare {
 				polyParams[voice][indexTracker[voice]][\channels] = sampleInfo[voice][\samples][samplenum].numChannels;
 			});
 			('channel count: '++paramProtos[voice][\channels]).postln;
-			// ('group: ' ++ groups[voice]).postln;
 		});
 	}
 
@@ -969,47 +965,6 @@ Kildare {
 				});
 			});
 		});
-	}
-
-	resetParams {
-		voiceKeys.do({ arg voiceKey;
-			indexTracker[voiceKey] = 0;
-			polyParams[voiceKey] = Dictionary.new(8);
-			8.do{ arg i;
-				voiceTracker[voiceKey] = Dictionary.new(8);
-				polyParams[voiceKey][i] = Dictionary.new;
-			};
-		});
-	}
-
-	resetVoices {
-		voiceTracker.do({arg voice;
-			(voice).do({ arg voiceIndex;
-				voiceIndex.postln;
-				if (voiceIndex.isPlaying, {
-					('freeing voice '++voiceIndex).postln;
-					voiceIndex.free;
-				});
-			});
-		});
-	}
-
-	resetBuffers {
-		(1..8).do({arg voice; this.clearSamples(voice.asSymbol);})
-	}
-
-	psetSwitch {
-		voiceTracker.do({arg voice;
-			(voice).do({ arg voiceIndex;
-				voiceIndex.postln;
-				if (voiceIndex.isPlaying, {
-					('freeing voice '++voiceIndex).postln;
-					voiceIndex.free;
-				});
-			});
-		});
-		// 8.do({arg voice; this.clearSamples((voice+1).asSymbol);})
-		// Buffer.freeAll(Crone.server);
 	}
 
 	free {
