@@ -57,7 +57,6 @@ Engine_Kildare : CroneEngine {
 		});
 
 		this.addCommand(\load_file, "ss", { arg msg;
-			msg[1] = msg[1].asInteger.asSymbol;
 			kernel.loadFile(msg);
 		});
 
@@ -84,6 +83,19 @@ Engine_Kildare : CroneEngine {
 			var paramValue = msg[3].asFloat;
 			var allocVoice = msg[4].asInteger-1;
 			kernel.setSampleBounds(voiceKey, paramKey, paramValue, allocVoice);
+		});
+
+		this.addCommand(\set_sample_loop, "ii", { arg msg;
+			var voiceKey = msg[1].asInteger.asSymbol;
+			var allocVoice = msg[2].asInteger-1;
+			kernel.setSampleLoop(voiceKey, allocVoice);
+		});
+
+		this.addCommand(\set_sample_rate, "iif", { arg msg;
+			var voiceKey = msg[1].asInteger.asSymbol;
+			var allocVoice = msg[2].asInteger-1;
+			var paramValue = msg[3].asFloat;
+			kernel.setSampleRate(voiceKey, allocVoice, paramValue);
 		});
 
 		this.addCommand(\clear_samples, "s", { arg msg;
@@ -115,6 +127,12 @@ Engine_Kildare : CroneEngine {
 			kernel.setVoiceLimit(voice, limit);
 		});
 
+		this.addCommand(\set_sample_mode, "is", { arg msg;
+			var voice = msg[1].asInteger.asSymbol;
+			var mode = msg[2].asSymbol;
+			kernel.setSampleMode(voice,mode);
+		});
+
 		this.addCommand(\set_poly_param_style, "is", { arg msg;
 			var voice = msg[1].asInteger.asSymbol;
 			var style = msg[2].asString;
@@ -135,6 +153,10 @@ Engine_Kildare : CroneEngine {
 
 		this.addCommand(\init_feedback,"", {
 			kernel.initFeedback();
+		});
+
+		this.addCommand(\pset_switch,"", {
+			kernel.psetSwitch();
 		});
 
 		this.addCommand(\reset,"", {

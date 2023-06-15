@@ -1,4 +1,4 @@
-KildareSample {
+KildareSampleFolder {
 
 	*new {
 		arg srv;
@@ -29,9 +29,10 @@ KildareSample {
 			\loopAtk,0,
 			\loopRel,50,
 			\envStyle,0,
+			\startPos,0,
 			\sampleStart,0,
 			\sampleEnd,1,
-			\loop,1,
+			\loop,0,
 			\rate,1,
 			\squishPitch,1,
 			\squishChunk,1,
@@ -56,10 +57,11 @@ KildareSample {
 	}
 
 	init {
-		SynthDef(\kildare_sample, {
+		SynthDef(\kildare_sampleFolder, {
 			arg bufnum, envStyle = 0, out = 0, amp = 1,
 			t_trig = 1, t_gate = 0, loopAtk = 0, loopRel = 50,
 			velocity = 127,
+			startPos = 0,
 			sampleStart = 0, sampleEnd = 1,
 			loop = 0, envCurve = -4,
 			pan = 0,
@@ -75,28 +77,17 @@ KildareSample {
 			lpHz, hpHz, filterQ,
 			squishPitch, squishChunk;
 
-			var snd, snd2, pos, pos2, frames, duration, loop_env, ampMod, delEnv, feedEnv, mainSend;
-			var startA, endA, startB, endB, crossfade, aOrB;
-			var totalOffset;
+			var snd;
+			var frames, duration, loop_env, ampMod, delEnv, feedEnv, mainSend;
 
-			eqHz = eqHz.lag3(0.1);
-			lpHz = lpHz.lag3(0.1);
-			hpHz = hpHz.lag3(0.1);
-			delaySend = delaySend.lag3(0.1);
-			feedbackSend = feedbackSend.lag3(0.1);
+			eqHz = eqHz.lag3(0.01);
+			lpHz = lpHz.lag3(0.01);
+			hpHz = hpHz.lag3(0.01);
+			delaySend = delaySend.lag3(0.01);
+			feedbackSend = feedbackSend.lag3(0.01);
 
 			filterQ = LinLin.kr(filterQ,0,100,1.0,0.001);
 			eqAmp = LinLin.kr(eqAmp,-2.0,2.0,-10.0,10.0);
-
-			// sample handling all adapted from Zack Scholl: https://schollz.com/blog/sampler/
-
-			// latch to change trigger between the two
-			aOrB = ToggleFF.kr(t_trig);
-			startA = Latch.kr(sampleStart,aOrB);
-			endA = Latch.kr(sampleEnd,aOrB);
-			startB = Latch.kr(sampleStart,1-aOrB);
-			endB = Latch.kr(sampleEnd,1-aOrB);
-			crossfade = Lag.ar(K2A.ar(aOrB),0.05);
 
 			rate = rate*BufRateScale.kr(bufnum);
 			frames = BufFrames.kr(bufnum);
@@ -115,42 +106,24 @@ KildareSample {
 				gate: t_gate
 			);
 
-			pos=Phasor.ar(
-				trig:aOrB,
-				rate:rate,
-				start:(((rate>0)*startA)+((rate<0)*endA))*frames,
-				end:(((rate>0)*endA)+((rate<0)*startA))*frames,
-				resetPos:(((rate>0)*startA)+((rate<0)*endA))*frames,
+			startPos = Select.kr(
+				rate >= 0, [
+					startPos = (frames - 1), // false
+					startPos = 0.0 // true
+				]
 			);
-			snd=BufRd.ar(
-				numChannels:2,
-				bufnum:bufnum,
-				phase:pos,
-				interpolation:4,
-			) * loop_env;
 
-			// add a second reader
-			pos2=Phasor.ar(
-				trig:(1-aOrB),
-				rate:rate,
-				start:(((rate>0)*startB)+((rate<0)*endB))*frames,
-				end:(((rate>0)*endB)+((rate<0)*startB))*frames,
-				resetPos:(((rate>0)*startB)+((rate<0)*endB))*frames,
+			snd = PlayBuf.ar(
+				numChannels: 2,
+				bufnum: bufnum,
+				rate: rate,
+				trigger: t_trig,
+				startPos: startPos
 			);
-			snd2=BufRd.ar(
-				numChannels:2,
-				bufnum:bufnum,
-				phase:pos2,
-				interpolation:4,
-			) * loop_env;
 
-			// ^^ sample handling all adapted from Zack Scholl: https://schollz.com/blog/sampler/ ^^
+			ampMod = SinOsc.ar(freq:amHz,mul:amDepth,add:1);
 
-			ampMod = SinOsc.ar(freq:amHz,mul:amDepth, add:1);
-
-			// crossfade.poll;
-
-			mainSend = ( ((((crossfade*snd)+((1-crossfade)*snd2)))*ampMod));
+			mainSend = snd * ampMod;
 
 			mainSend = Squiz.ar(in:mainSend, pitchratio:squishPitch, zcperchunk:squishChunk, mul:1);
 			mainSend = Decimator.ar(mainSend,bitRate,bitCount,1.0);
@@ -162,6 +135,7 @@ KildareSample {
 				{mainSend = Balance2.ar(mainSend[0],mainSend[1],pan)},
 				{mainSend = Balance2.ar(mainSend[0],mainSend[0],pan)}
 			);
+
 			mainSend = mainSend * (amp * LinLin.kr(velocity,0,127,0.0,1.0));
 
 			delEnv = Select.kr(

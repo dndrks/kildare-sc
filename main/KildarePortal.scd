@@ -3,6 +3,7 @@ s = Server.default;
 s.waitForBoot { Routine {
 	Server.default.options.outDevice_("BlackHole 16ch");
 	s.options.numOutputBusChannels = 16;
+	s.options.numWireBufs = 128;
 	s.reboot;
 
 	5.wait;
@@ -53,10 +54,10 @@ s.waitForBoot { Routine {
 // n.sendMsg("/command", "establish_engine")
 // n.sendMsg(*[ "/command/init_voice", "1", "kildare_bd"])
 // n.sendMsg(*[ "/command/trig", 1.0, 127.0, true, 1.0 ])
-n.sendMsg(*[ "/command/set_voice_param", "1", "out","0"])
-n.sendMsg(*[ "/command/set_voice_param", "2", "out","2"])
-n.sendMsg(*[ "/command/set_voice_param", "3", "out","4"])
-n.sendMsg(*[ "/command/set_voice_param", "4", "out","6"])
-n.sendMsg(*[ "/command/set_voice_param", "5", "out","8"])
-n.sendMsg(*[ "/command/set_voice_param", "6", "out","10"])
-n.sendMsg(*[ "/command/set_voice_param", "7", "out","12"])
+n.sendMsg(*[ "/command/set_voice_param", "1", "out","0"]);
+n.sendMsg(*[ "/command/set_voice_param", "2", "out","4"]);
+n.sendMsg(*[ "/command/set_voice_param", "3", "out","6"]);
+n.sendMsg(*[ "/command/set_voice_param", "4", "out","8"]);
+n.sendMsg(*[ "/command/set_voice_param", "5", "out","10"]);
+n.sendMsg(*[ "/command/set_voice_param", "6", "out","12"]);
+n.sendMsg(*[ "/command/set_voice_param", "7", "out","14"]);

@@ -21,7 +21,7 @@ Routine{
 		~hh = KildareHH.new(12),
 	];
 
-	~ui_render = false; // change <false> to <true> if not using Max/M4L interfaces
+	~ui_render = true; // change <false> to <true> if not using Max/M4L interfaces
 
 	~voice_strings = Dictionary.newFrom([
 		\bd, 0,

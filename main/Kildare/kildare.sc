@@ -53,6 +53,8 @@ Kildare {
 		synthDefs[\ptr] = KildarePTR.new(Server.default);
 		synthDefs[\input] = KildareInput.new(Server.default);
 		synthDefs[\sample] = KildareSample.new(Server.default);
+		synthDefs[\sampleFolder] = KildareSampleFolder.new(Server.default);
+		synthDefs[\samplePlaythrough] = KildareSamplePlaythrough.new(Server.default);
 
 		^super.new.init;
 	}
@@ -482,6 +484,20 @@ Kildare {
 				busses[\delayRSend],
 				busses[\feedbackSend],
 			),
+			\kildare_sampleFolder, KildareSampleFolder.buildParams(
+				nil,
+				busses[\mainOut],
+				busses[\delayLSend],
+				busses[\delayRSend],
+				busses[\feedbackSend],
+			),
+			\kildare_samplePlaythrough, KildareSamplePlaythrough.buildParams(
+				nil,
+				busses[\mainOut],
+				busses[\delayLSend],
+				busses[\delayRSend],
+				busses[\feedbackSend],
+			),
 			\kildare_saw, KildareSaw.buildParams(
 				busses[\mainOut],
 				busses[\delayLSend],
@@ -608,12 +624,39 @@ Kildare {
 		indexTracker[voiceKey] = allocVoice;
 		if (voiceTracker[voiceKey][allocVoice].isPlaying, {
 			voiceTracker[voiceKey][allocVoice].set(\velocity, velocity);
+			voiceTracker[voiceKey][allocVoice].set(\t_gate, 1);
 			if ((""++synthKeys[voiceKey]++"").contains("sample"), {
 				voiceTracker[voiceKey][allocVoice].set(\t_trig, 1);
 				('triggering sample '++allocVoice).postln;
 			});
-			voiceTracker[voiceKey][allocVoice].set(\t_gate, 1);
+			this.setSampleLoop(voiceKey, allocVoice);
 			// (' ' ++ indexTracker[voiceKey] ++ ' ' ++ allocVoice).postln;
+		});
+	}
+
+	setSampleLoop {
+		arg voiceKey, allocVoice;
+		var frames, start, end, duration, rate;
+
+		polyParams[voiceKey][allocVoice][\looper].stop;
+
+		if (voiceTracker[voiceKey][allocVoice].isPlaying && (polyParams[voiceKey][allocVoice][\loop] == 1), {
+			frames = polyParams[voiceKey][allocVoice][\bufnum].numFrames;
+
+			polyParams[voiceKey][allocVoice][\looper] = Routine({
+				loop{
+					('looping sample '++allocVoice).postln;
+					start = polyParams[voiceKey][allocVoice][\sampleStart];
+					end = polyParams[voiceKey][allocVoice][\sampleEnd];
+					rate = polyParams[voiceKey][allocVoice][\rate];
+
+					duration = frames*(end-start)/(rate).abs/Server.default.sampleRate;
+					duration.wait;
+					voiceTracker[voiceKey][allocVoice].set(\t_gate, 1);
+					voiceTracker[voiceKey][allocVoice].set(\t_trig, 1);
+				}
+			}).play;
+
 		});
 	}
 
@@ -627,6 +670,20 @@ Kildare {
 		);
 	}
 
+	setSampleRate { arg voiceKey, allocVoice, paramValue;
+		var frames, start, end, duration, rate;
+		if( voiceTracker[voiceKey][allocVoice].isPlaying,
+			{
+				frames = polyParams[voiceKey][allocVoice][\bufnum].numFrames;
+				if( paramValue >= 0,
+					{voiceTracker[voiceKey][allocVoice].set(\startPos, 0.0)},
+					{voiceTracker[voiceKey][allocVoice].set(\startPos, frames - 1)}
+				);
+				voiceTracker[voiceKey][allocVoice].set(\rate,paramValue);
+			}
+		);
+	}
+
 	setVoiceParam { arg voiceKey, paramKey, paramValue;
 		paramProtos[voiceKey][paramKey] = paramValue;
 
@@ -635,8 +692,8 @@ Kildare {
 				if( voiceTracker[voiceKey][indexTracker[voiceKey]].isPlaying,
 					{
 						voiceTracker[voiceKey][indexTracker[voiceKey]].set(paramKey, paramValue);
-						if( (paramKey.asString).contains("sampleEnd"),
-							{paramValue.postln}
+						if( (paramKey.asString).contains("rate"),
+							// {this.setSampleLoop(voiceKey,indexTracker[voiceKey])}
 						);
 					}
 				);
@@ -819,6 +876,9 @@ Kildare {
 	}
 
 	clearSamples { arg voice;
+		8.do({ arg allocVoice;
+			polyParams[voice][allocVoice.asInteger][\looper].stop;
+		});
 		("clearSamples: " ++ voice).postln;
 		if ( sampleInfo[voice][\samples].size > 0, {
 			for ( 0, sampleInfo[voice][\samples].size-1, {
@@ -836,8 +896,8 @@ Kildare {
 		voice.postln;
 		indexTracker.postln;
 		indexTracker[voice].postln;
-		voiceTracker[voice][indexTracker[voice]].set(\t_trig, -1);
 		voiceTracker[voice][indexTracker[voice]].set(\t_gate, -1);
+		voiceTracker[voice][indexTracker[voice]].set(\t_trig, -1);
 
 		this.clearSamples(voice);
 		sampleInfo[voice][\samples][0] = Buffer.read(Server.default, filename ,action:{
@@ -878,6 +938,7 @@ Kildare {
 		sampleInfo[voice][\samples][index] = Buffer.read(Server.default, path, action:{
 			arg bufnum;
 			sampleInfo[voice][\pointers][index] = bufnum;
+			('bufnum: ' ++ bufnum).postln;
 			('pointers info: ' ++ sampleInfo[voice][\pointers][index]).postln;
 			if (index == 0, {
 				this.setFile(voice,1,true);
@@ -896,6 +957,27 @@ Kildare {
 		('loadFolder called').postln;
 	}
 
+	setSampleMode { arg voice, model;
+		(voiceLimit[voice]).do({ arg voiceIndex;
+			if( voiceTracker[voice][voiceIndex].isPlaying, {
+				voiceTracker[voice][voiceIndex].free;
+				('freeing poly '++voiceTracker[voice][voiceIndex].nodeID).postln;
+			});
+		});
+		synthKeys[voice] = model;
+		paramProtos[voice] = Dictionary.newFrom(generalizedParams[model]);
+		8.do({ arg i;
+			('setting poly params ' ++ voice ++ ' ' ++i).postln;
+			polyParams[voice][i] = Dictionary.newFrom(generalizedParams[model]);
+		});
+		('building synth ' ++ voice ++ ' ' ++ model).postln;
+		(voiceLimit[voice]).do({ arg voiceIndex;
+			voiceTracker[voice][voiceIndex] = Synth.new(synthKeys[voice], paramProtos[voice].getPairs);
+			NodeWatcher.register(voiceTracker[voice][voiceIndex],true);
+			('poly: '++ voice ++ ', ' ++ voiceIndex ++ ', '++voiceTracker[voice][voiceIndex].isPlaying).postln;
+		});
+	}
+
 	/*adjustSampleMult { arg voice, mult;
 		if (paramProtos[voice][\rate] != mult, {
 			groups[voice].set(\rate, paramProtos[voice][\rate] * mult);
@@ -907,8 +989,8 @@ Kildare {
 	}*/
 
 	stopSample { arg voice;
-		voiceTracker[voice][indexTracker[voice]].set(\t_trig, -1.1);
 		voiceTracker[voice][indexTracker[voice]].set(\t_gate, -1.1);
+		voiceTracker[voice][indexTracker[voice]].set(\t_trig, -1.1);
 	}
 
 	freeFeedback{
@@ -994,6 +1076,15 @@ Kildare {
 		});
 	}
 
+	stopLoopers {
+		('stopping loops').postln;
+		(1..8).do({ arg voiceKey;
+			(8).do({ arg allocVoice;
+				polyParams[voiceKey.asSymbol][allocVoice.asInteger][\looper].stop;
+			});
+		});
+	}
+
 	resetBuffers {
 		(1..8).do({arg voice; this.clearSamples(voice.asSymbol);})
 	}
@@ -1013,7 +1104,7 @@ Kildare {
 	}
 
 	free {
-		// topGroup.free;
+		this.stopLoopers;
 		feedbackSynths.do({arg bus;
 			bus.free;
 		});

@@ -15,6 +15,18 @@ Kildare.allocVoice = {}
 
 Kildare.soundfile_append = ''
 
+function send_to_engine(action, args)
+  -- engine[action](table.unpack(args))
+  -- if action ~= 'free_voice' then
+  --   osc.send({osc_echo,57120},"/command",{action,table.unpack(args)})
+  -- end
+  if osc_echo == nil then
+    engine[action](table.unpack(args))
+  else
+    osc.send({osc_echo,57120},"/command",{action,table.unpack(args)})
+  end
+end
+
 local sox_installed = os.execute('which sox')
 
 function round_form(param,quant,form)
@@ -182,6 +194,18 @@ function Kildare.push_model_to_lfos(i,current_model)
 
 end
 
+local sample_speedlist = {-4, -2, -1, -0.5, -0.25, 0, 0.25, 0.5, 1, 2, 4}
+
+local function get_resampled_rate(voice)
+  local total_offset;
+  total_offset = params:get(voice..'_sample_playbackRateOffset')
+  total_offset = math.pow(0.5, -total_offset / 12)
+  if util.round(params:get(voice..'_sample_playbackPitchControl'),0.01) ~= 0 then
+    total_offset = total_offset + (total_offset * (util.round(params:get(voice..'_sample_playbackPitchControl'),0.01)/100))
+  end
+  return (total_offset * sample_speedlist[params:get(voice..'_sample_playbackRateBase')])
+end
+
 function Kildare.init(track_count, poly)
 
   kildare_total_tracks = track_count
@@ -239,12 +263,14 @@ function Kildare.init(track_count, poly)
     {lfo_exclude = true, type = 'binary', id = 'sampleClear', name = 'clear', behavior = 'momentary'},
     {type = 'separator', name = 'voice params'},
     {id = 'amp', name = 'amp', type = 'control', min = 0, max = 1.25, warp = 'lin', default = 0.7, quantum = 1/125, formatter = function(param) return (round_form((type(param) == 'table' and param:get() or param)*100,1,"%")) end},
-    {id = 'loopAtk', name = 'loop attack', type = 'control', min = 0, max = 100, warp = 'lin', default = 0, quantum = 1/100, formatter = function(param) return (round_form((type(param) == 'table' and param:get() or param),1,"%")) end},
-    {id = 'loopRel', name = 'loop release', type = 'control', min = 0, max = 100, warp = 'lin', default = 50, quantum = 1/100, formatter = function(param) return (round_form((type(param) == 'table' and param:get() or param),1,"%")) end},
+    {id = 'loopAtk', name = 'loop attack', type = 'control', min = 0, max = 100, warp = 'lin', default = 5, quantum = 1/100, formatter = function(param) return (round_form((type(param) == 'table' and param:get() or param),1,"%")) end},
+    {id = 'loopRel', name = 'loop release', type = 'control', min = 0, max = 100, warp = 'lin', default = 5, quantum = 1/100, formatter = function(param) return (round_form((type(param) == 'table' and param:get() or param),1,"%")) end},
     {id = 'envCurve', name = 'loop env curve', type = 'control', min = -12, max = 4, warp = 'lin', default = -4, quantum = 1/160, formatter = function(param) return (round_form(
       util.linlin(-12,4,0,100,(type(param) == 'table' and param:get() or param)),
       1,"%")) end},
-    {id = 'playbackRateBase', name = 'rate', type = 'control', min = 1, max = 11, warp = 'lin', default = 9, step = 1, quantum = 1/10, formatter = function(param) local rate_options = {-4, -2, -1, -0.5, -0.25, 0, 0.25, 0.5, 1, 2, 4} return rate_options[(type(param) == 'table' and param:get() or param)]..'x' end},
+    {id = 'sampleStart', name = 'sample start', type = 'control', min = 0, max = 1, warp = 'lin', default = 0, quantum = 1/100, formatter = function(param) return (round_form((type(param) == 'table' and param:get() or param) * 100,1,"%")) end},
+    {id = 'sampleEnd', name = 'sample end', type = 'control', min = 0, max = 1, warp = 'lin', default = 1, quantum = 1/100, formatter = function(param) return (round_form((type(param) == 'table' and param:get() or param) * 100,1,"%")) end},
+      {id = 'playbackRateBase', name = 'rate', type = 'control', min = 1, max = 11, warp = 'lin', default = 9, step = 1, quantum = 1/10, formatter = function(param) local rate_options = {-4, -2, -1, -0.5, -0.25, 0, 0.25, 0.5, 1, 2, 4} return rate_options[(type(param) == 'table' and param:get() or param)]..'x' end},
     {id = 'playbackRateOffset', name = 'offset', type = 'control', min = -24, max = 24, warp = 'lin', default = 0, step = 1, quantum = 1/48, formatter = function(param) return (round_form((type(param) == 'table' and param:get() or param),1," semitones")) end},
     {id = 'playbackPitchControl', name = 'pitch control', type = 'control', min = -12, max = 12, warp = 'lin', default = 0, step = 1/10, quantum = 1/240, formatter = function(param) return (round_form((type(param) == 'table' and param:get() or param),0.01,"%")) end},
     {id = 'loop', name = 'loop', type = 'control', min = 0, max = 1, warp = "lin", default = 0, quantum = 1, formatter = function(param) local modes = {"off","on"} return modes[(type(param) == 'table' and param:get() or param)+1] end},
@@ -1103,11 +1129,11 @@ function Kildare.init(track_count, poly)
     params:add_option('voice_model_'..i, 'voice '..i, models, i)
     params:set_action('voice_model_'..i, function(x)
       if all_loaded then
-        engine.set_model(i, 'kildare_'..models[x], 'false')
+        -- engine.set_model(i, 'kildare_'..models[x], 'false')
+        send_to_engine('set_model', {i, 'kildare_'..models[x], 'false'})
         print('model build')
         Kildare.rebuild_model_params(i, models[x])
       end
-      -- engine.set_model(i, 'kildare_'..models[x], 'false')
     end)
   end
 
@@ -1160,7 +1186,8 @@ function Kildare.init(track_count, poly)
         if #queued_inits > 0 then
           local i = queued_inits[1].voice
           local model = queued_inits[1].model
-          engine.init_voice(i, 'kildare_'..model)
+          -- engine.init_voice(i, 'kildare_'..model)
+          send_to_engine('init_voice', {i, 'kildare_'..model})
           print('activating voice '..i)
           Kildare.rebuild_model_params(i, model)
           table.remove(queued_inits,1)
@@ -1170,27 +1197,33 @@ function Kildare.init(track_count, poly)
   )
 
   for i = 1,track_count do
-    local osc_params_count = 0
+    local osc_params_count = 4
     local shown_set = params:string('voice_model_'..i)
-    params:add_group('kildare_'..i..'_group', i..': '..shown_set, how_many_params + 4 + osc_params_count)
+    params:add_group('kildare_'..i..'_group', i..': '..shown_set, how_many_params + osc_params_count)
     
     params:add_separator('voice_management_'..i, 'voice management')
     params:add_binary(i..'_voice_state', 'active?', 'toggle', 1)
     params:set_action(i..'_voice_state',
     function(x)
       if x == 0 then
-        engine.free_voice(i)
+        -- engine.free_voice(i)
+        send_to_engine('free_voice', {i})
       else
-        -- engine.init_voice(i, 'kildare_'..params:string('voice_model_'..i))
-        -- print('activating voice '..i)
-        -- Kildare.rebuild_model_params(i, params:string('voice_model_'..i))
         add_to_init_queue(i,params:string('voice_model_'..i))
       end
     end)
+    -- params:add_binary(i..'_external_send', 'send as OSC only?', 'toggle', 0)
     params:add_number(i..'_poly_voice_count', 'voice count', 1, 8, 1)
-    params:set_action(i..'_poly_voice_count', function(x) engine.set_voice_limit(i,x) Kildare.allocVoice[i] = 0 end)
+    -- params:set_action(i..'_poly_voice_count', function(x) engine.set_voice_limit(i,x) Kildare.allocVoice[i] = 0 end)
+    params:set_action(i..'_poly_voice_count', function(x)
+      send_to_engine('set_voice_limit', {i,x})
+      Kildare.allocVoice[i] = 0
+    end)
     params:add_option(i..'_poly_param_style', 'poly params', {'all voices','current voice','next voice'}, 1)
-    params:set_action(i..'_poly_param_style', function(x) engine.set_poly_param_style(i, params:string(i..'_poly_param_style')) end)
+    -- params:set_action(i..'_poly_param_style', function(x) engine.set_poly_param_style(i, params:string(i..'_poly_param_style')) end)
+    params:set_action(i..'_poly_param_style', function(x)
+      send_to_engine('set_poly_param_style', {i, params:string(i..'_poly_param_style')})
+    end)
 
     for k,v in pairs(swappable_drums) do
       for prms,d in pairs(kildare_drum_params[v]) do
@@ -1241,7 +1274,8 @@ function Kildare.init(track_count, poly)
             params:set_action(i.."_"..v..'_'..d.id, function(x)
               if engine.name == "Kildare" then
                 if v == params:string('voice_model_'..i) then
-                  engine.set_voice_param(i, d.id, x)
+                  -- engine.set_voice_param(i, d.id, x)
+                  send_to_engine('set_voice_param', {i, d.id, x})
                   Kildare.voice_param_callback(i, d.id, x)
                 end
               end
@@ -1250,9 +1284,8 @@ function Kildare.init(track_count, poly)
             params:set_action(i.."_"..v..'_'..d.id, function(x)
               if engine.name == "Kildare" then
                 if v == params:string('voice_model_'..i) then
-                  engine.set_voice_param(i, d.id, musicutil.note_num_to_freq(x))
-                  engine.set_voice_param(i, 'carHzThird', musicutil.note_num_to_freq(x))
-                  engine.set_voice_param(i, 'carHzSeventh', musicutil.note_num_to_freq(x))
+                  -- engine.set_voice_param(i, d.id, musicutil.note_num_to_freq(x))
+                  send_to_engine('set_voice_param', {i, d.id, musicutil.note_num_to_freq(x)})
                   Kildare.voice_param_callback(i, d.id, x)
                 end
               end
@@ -1272,7 +1305,8 @@ function Kildare.init(track_count, poly)
                   end
                   -- _menu.rebuild_params()
                   menu_rebuild_queued = true
-                  engine.set_voice_param(i, d.id, x)
+                  -- engine.set_voice_param(i, d.id, x)
+                  send_to_engine('set_voice_param', {i, d.id, x})
                   Kildare.voice_param_callback(i, d.id, x)
                 end
               end
@@ -1292,12 +1326,39 @@ function Kildare.init(track_count, poly)
                   end
                   -- _menu.rebuild_params()
                   menu_rebuild_queued = true
-                  engine.set_voice_param(i, d.id, x)
+                  -- engine.set_voice_param(i, d.id, x)
+                  send_to_engine('set_voice_param', {i, d.id, x})
                   Kildare.voice_param_callback(i, d.id, x)
                 end
               end
             end)
           elseif d.id == "sampleMode" then
+            params:set_action(i..'_'..v..'_'..d.id,
+              function(x)
+                if params:string('voice_model_'..i) == 'sample' then
+                  if x == 3 then
+                    send_to_engine('set_sample_mode', {i,"kildare_sampleFolder"})
+                    params:hide(i..'_'..v..'_loopAtk')
+                    params:hide(i..'_'..v..'_loopRel')
+                    params:hide(i..'_'..v..'_sampleStart')
+                    params:hide(i..'_'..v..'_sampleEnd')
+                  elseif x == 2 then
+                    send_to_engine('set_sample_mode', {i,"kildare_samplePlaythrough"})
+                    params:show(i..'_'..v..'_loopAtk')
+                    params:show(i..'_'..v..'_loopRel')
+                    params:show(i..'_'..v..'_sampleStart')
+                    params:show(i..'_'..v..'_sampleEnd')
+                  elseif x == 1 then
+                    send_to_engine('set_sample_mode', {i,"kildare_sample"})
+                    params:show(i..'_'..v..'_loopAtk')
+                    params:show(i..'_'..v..'_loopRel')
+                    params:hide(i..'_'..v..'_sampleStart')
+                    params:hide(i..'_'..v..'_sampleEnd')
+                  end
+                  menu_rebuild_queued = true
+                end
+              end
+            )
           elseif d.id == "sampleFile" then
             params:set_action(i.."_"..v..'_'..d.id,
               function(file)
@@ -1305,10 +1366,12 @@ function Kildare.init(track_count, poly)
                   if params:string(i.."_"..v.."_sampleMode") == "distribute" then
                     local split_at = string.match(file, "^.*()/")
                     local folder = string.sub(file, 1, split_at)
-                    engine.load_folder(i,folder)
+                    -- engine.load_folder(i,folder)
+                    send_to_engine('load_folder', {i,folder})
                     Kildare.folder_callback(i,folder)
                   else
-                    engine.load_file(i,file)
+                    -- engine.load_file(i,file)
+                    send_to_engine('load_file', {i,file})
                     Kildare.file_callback(i,file)
                   end
                 end
@@ -1320,17 +1383,31 @@ function Kildare.init(track_count, poly)
                 print(x)
                 if x == 1 then
                   print(params:string(i.."_"..v.."_sampleFile"))
-                  engine.clear_samples(i)
+                  -- engine.clear_samples(i)
+                  send_to_engine('clear_samples', {i})
                   params:set(i.."_"..v.."_sampleFile", _path.audio, silent)
                   Kildare.clear_callback(i)
                 end
               end
             )
-          elseif d.id == 'playbackRateBase' then
-          elseif d.id == 'playbackRateOffset' or d.id == 'playbackPitchControl' then
+          elseif d.id == 'playbackRateBase' or d.id == 'playbackRateOffset' or d.id == 'playbackPitchControl' then
+            params:set_action(i..'_'..v..'_'..d.id,
+            function(x)
+              send_to_engine('set_voice_param',{i, 'rate', get_resampled_rate(i)})
+              -- for j = 1,8 do
+              --   send_to_engine('set_sample_rate',{i,j,get_resampled_rate(i)})
+              -- end
+            end
+          )
           elseif d.id == 'loop' then
             params:set_action(i.."_"..v..'_'..d.id,
               function(x)
+                send_to_engine('set_voice_param', {i, 'loop', x})
+                if (x == 0 and params:get(i..'_poly_param_style') == 1) or (x == 0 and params:get(i..'_poly_voice_count') == 1) then
+                  for j = 1,8 do
+                    send_to_engine('set_sample_loop',{i,j})
+                  end
+                end
               end
             )
           end
@@ -1473,9 +1550,11 @@ function Kildare.init(track_count, poly)
         params:set_action(k.."_"..d.id, function(x)
           if engine.name == "Kildare" then
             if k == "delay" and d.id == "time" then
-              engine["set_"..k.."_param"](d.id, clock.get_beat_sec() * x/128)
+              -- engine["set_"..k.."_param"](d.id, clock.get_beat_sec() * x/128)
+              send_to_engine("set_"..k.."_param", {d.id, clock.get_beat_sec() * x/128})
             elseif k ~= 'feedback' then
-              engine["set_"..k.."_param"](d.id, x)
+              -- engine["set_"..k.."_param"](d.id, x)
+              send_to_engine("set_"..k.."_param", {d.id, x})
             elseif k == 'feedback' then
               local sub = '_'
               local keys = {}
@@ -1493,7 +1572,8 @@ function Kildare.init(track_count, poly)
               elseif paramKey == 'outC' then
                 params:set('feedback_cMixer_in'..targetLine, x)
               end
-              engine['set_feedback_param'](targetKey, paramKey, x)
+              -- engine['set_feedback_param'](targetKey, paramKey, x)
+              send_to_engine('set_feedback_param', {targetKey, paramKey, x})
             end
           end
         end)
@@ -1515,6 +1595,18 @@ function Kildare.init(track_count, poly)
 
   Kildare.loaded = true
   
+end
+
+function Kildare.reset_params()
+  for i = 1,kildare_total_tracks do
+    for k,v in pairs(swappable_drums) do
+      for prms,d in pairs(kildare_drum_params[v]) do
+        if d.type ~= 'separator' and d.default ~= nil then
+          params:set(i..'_'..v..'_'..d.id, d.default)
+        end
+      end
+    end
+  end
 end
 
 return Kildare
